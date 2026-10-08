@@ -155,21 +155,21 @@ impl Styles {
                 text_color: Some(theme.extended_palette().background.weak.text),
                 background: Some(iced::Background::Color(theme.extended_palette().background.weak.color)),
                 border: Border { 
-                    color: theme.extended_palette().background.base.color,
+                    color: theme.extended_palette().background.weak.color,
                     width: 0.0, 
                     radius: Radius::new(0.0) 
                 },
                 shadow: Shadow { 
-                    color: theme.extended_palette().background.base.color,
+                    color: theme.extended_palette().background.weak.color,
                     offset: iced::Vector::ZERO, 
                     blur_radius: 0.0
                 },
                 snap: false,
             },
             vertical_rail: Rail { 
-                background: Some(iced::Background::Color(theme.extended_palette().background.weak.color)),
+                background: Some(iced::Background::Color(theme.extended_palette().background.strong.color)),
                 border: Border { 
-                    color: theme.extended_palette().background.base.color, 
+                    color: theme.extended_palette().background.base.color,
                     width: 0.0, 
                     radius: Radius::new(0.0)
                 },
