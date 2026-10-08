@@ -9,5 +9,6 @@ fn main() {
         window::Window::view,
     )
     .theme(Theme::CatppuccinMocha)
+    .subscription(window::Window::subscriptions)
     .run();
 }

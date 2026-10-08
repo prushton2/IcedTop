@@ -1,17 +1,19 @@
 use iced::border::Radius;
 use iced::{Border, Length, Shadow, Task, Vector};
 use iced::widget::{text, button, row, column};
+use iced_widget::scrollable::Rail;
 
 use crate::window;
+use crate::window::modules::ps;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum UIState {
-    Hardware,
     Ps,
     Systemd,
+    Hardware,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum UIMessage {
     TabHardware,
     TabPs,
@@ -35,10 +37,16 @@ pub fn update(this: &mut window::Window, message: UIMessage) -> Task<window::Mes
     }
 }
 
-pub fn view(this: &window::Window) -> iced::Element<'static, window::Message> {
+pub fn view(this: &window::Window) -> iced::Element<'_, window::Message> {
     match this.ui_state {
         UIState::Ps => {
-            return Widgets::ribbon(this, text("ps").into())
+            return Widgets::ribbon(this, 
+                row![
+                    this.ps.view(ps::PsViewSortBy::Cpu)
+                ]
+                .padding(iced::Padding::new(0.0).horizontal(50.0).top(50.0))
+                .into()
+            )
         },
         UIState::Systemd => {
             return Widgets::ribbon(this, text("systemd").into())
@@ -97,7 +105,7 @@ impl Widgets {
     }
 }
 
-struct Styles;
+pub struct Styles;
 
 impl Styles {
     pub fn tab_selected(theme: &iced::Theme) -> iced_widget::button::Style {
@@ -138,6 +146,73 @@ impl Styles {
                 blur_radius: 0.0
             },
             snap: false
+        }
+    }
+
+    pub fn processes_inner_box(theme: &iced::Theme) -> iced_widget::scrollable::Style {
+        iced_widget::scrollable::Style {
+            container: iced_widget::container::Style {
+                text_color: Some(theme.extended_palette().background.weak.text),
+                background: Some(iced::Background::Color(theme.extended_palette().background.weak.color)),
+                border: Border { 
+                    color: theme.extended_palette().background.base.color,
+                    width: 0.0, 
+                    radius: Radius::new(0.0) 
+                },
+                shadow: Shadow { 
+                    color: theme.extended_palette().background.base.color,
+                    offset: iced::Vector::ZERO, 
+                    blur_radius: 0.0
+                },
+                snap: false,
+            },
+            vertical_rail: Rail { 
+                background: Some(iced::Background::Color(theme.extended_palette().background.weak.color)),
+                border: Border { 
+                    color: theme.extended_palette().background.base.color, 
+                    width: 0.0, 
+                    radius: Radius::new(0.0)
+                },
+                scroller: iced_widget::scrollable::Scroller { 
+                    background: iced::Background::Color(theme.extended_palette().primary.weak.color), 
+                    border: Border { 
+                        color: theme.extended_palette().background.base.color, 
+                        width: 0.0, 
+                        radius: Radius::new(0.0)
+                    }
+                },  
+            },
+            horizontal_rail: Rail { 
+                background: Some(iced::Background::Color(theme.extended_palette().primary.base.color)),
+                border: Border { 
+                    color: theme.extended_palette().background.base.color, 
+                    width: 0.0, 
+                    radius: Radius::new(0.0)
+                },
+                scroller: iced_widget::scrollable::Scroller { 
+                    background: iced::Background::Color(theme.extended_palette().primary.base.color), 
+                    border: Border { 
+                        color: theme.extended_palette().background.base.color, 
+                        width: 0.0, 
+                        radius: Radius::new(0.0)
+                    }
+                },  
+            },
+            gap: Some(iced::Background::Color(theme.extended_palette().primary.base.color)),
+            auto_scroll: iced_widget::scrollable::AutoScroll {
+                background: iced::Background::Color(theme.extended_palette().primary.base.color), 
+                border: Border { 
+                    color: theme.extended_palette().background.base.color, 
+                    width: 0.0, 
+                    radius: Radius::new(0.0)
+                },
+                shadow: Shadow { 
+                    color: theme.extended_palette().background.base.color,
+                    offset: iced::Vector::ZERO, 
+                    blur_radius: 0.0
+                },
+                icon: theme.extended_palette().primary.strong.color
+            },
         }
     }
 }
