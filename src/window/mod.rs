@@ -12,6 +12,6 @@ pub struct Window {
 #[derive(Clone, Debug)]
 pub enum Message {
     UIUpdate(UIMessage),
+    PsMessage(modules::ps::Message),
     PsTick,
-    PsRefreshed(Vec<ps::Process>),
 }

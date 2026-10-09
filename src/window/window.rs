@@ -3,7 +3,7 @@ use std::time::Duration;
 use iced::Task;
 
 use crate::window::{Message, Window, modules::ui_state::UIState};
-use crate::window::modules::*;
+use crate::window::modules::{self, *};
 
 impl Window {
     pub fn new() -> (Self, Task<Message>) {
@@ -24,8 +24,8 @@ impl Window {
                 self.ps.fetch();
                 Task::none()
             }
-            Message::PsRefreshed(processes) => {
-                self.ps.processes = processes;
+            Message::PsMessage(message) => {
+                modules::ps::update(&mut self.ps, message);
                 Task::none()
             }
         }
