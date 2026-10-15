@@ -1,24 +1,17 @@
 use iced::Length;
 use iced_widget::{button, row, scrollable, table, text};
 use iced_aw::menu::{self, Item};
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::{HashMap, HashSet}};
 
 use crate::window::modules::ui_state::Styles;
-
-#[derive(Clone, Debug)]
-pub struct Process {
-    pub user: String,
-    pub pid: u32,
-    pub cpu: f32,
-    pub mem: f32,
-    pub command: String,
-    pub app: String,
-}
+use super::{Delta, Process, StatReading};
 
 pub struct Ps {
     pub reversed: bool,
     pub sort_by: PsViewSortBy,
-    pub processes: Vec<Process>
+    pub keyed_processes: HashMap<u32, Process>,
+    clock_ticks: u64,
+    page_size: u64,
 }
 
 impl Ps {
@@ -26,64 +19,66 @@ impl Ps {
         Self {
             reversed: false,
             sort_by: PsViewSortBy::Cpu,
-            processes: vec![]
+            keyed_processes: [].into(),
+            clock_ticks: unsafe { libc::sysconf(libc::_SC_CLK_TCK) as u64 },
+            page_size: unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64
         }
     }
 
     pub fn fetch(&mut self) {
-        let command = std::process::Command::new("ps")
-            .arg("aux")
-            .output()
-            .unwrap();
+        let proc = std::fs::read_dir("/proc").unwrap();
 
-        let str = String::from_utf8_lossy(&command.stdout[..]);
-        let mut lines = str.split("\n").collect::<Vec<&str>>();
+        let mut running_processes: HashSet<u32> = [].into();
 
-        // drop first line because iti isnt a process
-        let _ = lines.remove(0);
-
-        self.processes = Vec::with_capacity(lines.len());
-
-        for line in lines {
-            if line == "" {
+        for process in proc.flatten() {
+            // Some entries are non-processes, so ignore them
+            let Some(_) = process.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
                 continue;
+            };
+
+            // The process may have exited since read_dir
+            let Ok(stat) = std::fs::read_to_string(process.path().join("stat")) else {
+                continue;
+            };
+            let stat_reading: StatReading = stat.into();
+            running_processes.insert(stat_reading.pid);
+
+            let kernel_time_millis = stat_reading.stime * 1000 / self.clock_ticks;
+            let user_time_millis   = stat_reading.utime * 1000 / self.clock_ticks;
+
+            let process: &mut Process = self.keyed_processes.entry(stat_reading.pid).or_default();
+
+            // New process, or if the PID was reused by a different process, then restart
+            if process.pid != stat_reading.pid || process.start_time != stat_reading.starttime {
+                *process = Process {
+                    start_time: stat_reading.starttime,
+                    kernel_time_millis: Delta::new(kernel_time_millis),
+                    user_time_millis: Delta::new(user_time_millis),
+                    ..Default::default()
+                };
+            } else {
+                process.kernel_time_millis.push(kernel_time_millis);
+                process.user_time_millis  .push(user_time_millis);
             }
 
-            let mut split = line.split(" ").filter(|e| *e != "");
-
-            self.processes.push(Process {
-                user:     split.next().unwrap().to_owned(),
-                pid:      split.next().unwrap().parse::<u32>().unwrap(),
-                cpu:      split.next().unwrap().parse::<f32>().unwrap(),
-                mem:      split.next().unwrap().parse::<f32>().unwrap(),
-                command:  {
-                    let _ = split.nth(5);
-                    split.collect::<Vec<&str>>().join(" ")
-                },
-                app: String::from("")
-            });
-
-            let command = self.processes.last().unwrap().command.clone();
-            let len = self.processes.len();
-
-            self.processes[len-1].app = command.split(" ").nth(0).unwrap().split("/").last().unwrap().to_owned();
-            
-            if self.processes[len-1].app == "ps" {
-                self.processes.remove(len-1);
-            }
+            process.name = stat_reading.comm;
+            process.pid = stat_reading.pid;
+            process.pages_used = stat_reading.rss as u64;
         }
+
+        self.keyed_processes.retain(|pid, _| running_processes.contains(pid));
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
-        let mut processes: Vec<&Process> = self.processes.iter().map(|e| e).collect();
+        let mut processes: Vec<&Process> = self.keyed_processes.iter().map(|(_, e)| e).collect();
         
         processes.sort_by(|a, b| {
           match self.sort_by {
-            PsViewSortBy::App =>  order_from_bool(a.app < b.app),
-            PsViewSortBy::Cpu =>  order_from_bool(a.cpu < b.cpu),
-            PsViewSortBy::Mem =>  order_from_bool(a.mem < b.mem),
-            PsViewSortBy::User => order_from_bool(a.user < b.user),
-            PsViewSortBy::Pid =>  order_from_bool(a.pid > b.pid)
+            PsViewSortBy::App =>  order_from_bool(a.name < b.name),
+            PsViewSortBy::Cpu =>  order_from_bool(a.cpu_pct(1000) < b.cpu_pct(1000)),
+            PsViewSortBy::Mem =>  order_from_bool(a.pages_used < b.pages_used),
+            PsViewSortBy::Pid =>  order_from_bool(a.pid > b.pid),
+            _ =>  order_from_bool(a.cpu_pct(1000) < b.cpu_pct(1000)),
           }
         });
 
@@ -100,7 +95,7 @@ impl Ps {
                             .on_press(Message::UpdateSortBy(PsViewSortBy::App)),
                         self.sort_label(PsViewSortBy::App)
                     ],
-                    |e: &Process| Self::process_context_menu(&e.app, e.pid)),
+                    |e: &Process| Self::process_context_menu(&e.name, e.pid)),
                 table::column(
                     row![
                         button("PID")
@@ -116,7 +111,8 @@ impl Ps {
                             .on_press(Message::UpdateSortBy(PsViewSortBy::Cpu)),
                         self.sort_label(PsViewSortBy::Cpu)
                     ],
-                    |e: &Process| row![text(&e.cpu), text("%")]),
+                    |e: &Process| row![text(&e.cpu_pct(1000)), text("%")])
+                    .align_x(iced::alignment::Horizontal::Right),
                 table::column(
                     row![
                         button("Memory")
@@ -124,20 +120,17 @@ impl Ps {
                             .on_press(Message::UpdateSortBy(PsViewSortBy::Mem)),
                         self.sort_label(PsViewSortBy::Mem)
                     ],
-                    |e: &Process| row![text(&e.mem), text("%")]),
-                table::column(
-                    row![
-                        button("Owner")
-                            .style(|t, _| Styles::ps_column_header_button(t))
-                            .on_press(Message::UpdateSortBy(PsViewSortBy::User)),
-                        self.sort_label(PsViewSortBy::User)
-                    ],
-                    |e: &Process| text(&e.user)),
+                    |e: &Process| {
+                        let mem = e.mem_h(self.page_size);
+                        row![text(mem.0), text(" "), text(mem.1)]
+                    })
+                    .align_x(iced::alignment::Horizontal::Right),
             ],
             processes
         );
 
-        scrollable(elements.width(Length::Fill)).into()
+        scrollable(elements.width(Length::Fill)).spacing(4).into()
+        // text("Empty").into()
     }
 
     fn process_context_menu<'a>(label: &'a str, pid: u32) -> iced::Element<'a, Message> {
@@ -171,7 +164,6 @@ impl Ps {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PsViewSortBy {
-    User,
     Cpu,
     Mem,
     App,

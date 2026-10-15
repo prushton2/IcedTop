@@ -9,6 +9,7 @@ dependencies = [
  "iced",
  "iced_aw",
  "iced_widget",
+ "libc",
 ]
 
 [[package]]
