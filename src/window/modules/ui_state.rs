@@ -221,7 +221,7 @@ impl Styles {
                 snap: false
             },
             _ => iced_widget::button::Style {
-                background: None,
+                background: Some(iced::Background::Color(theme.extended_palette().background.base.color)),
                 text_color: theme.extended_palette().background.base.text,
                 border: Border {
                     color: theme.palette().success,
@@ -238,6 +238,90 @@ impl Styles {
                 },
                 snap: false
             }
+        }
+    }
+
+    pub fn ps_unselected_row(theme: &iced::Theme) -> iced_widget::button::Style {
+        iced_widget::button::Style {
+            background: None,
+            text_color: theme.extended_palette().background.base.text,
+            border: Border {
+                color: theme.palette().success,
+                width: 0.0,
+                radius: Radius { top_left: 0.0, top_right: 0.0, bottom_right: 0.0, bottom_left: 0.0 }
+            },
+            shadow: Shadow {
+                color: theme.palette().background,
+                offset: Vector {
+                    x: 0.0,
+                    y: 1.0
+                },
+                blur_radius: 0.0
+            },
+            snap: false
+        }
+    }
+
+    pub fn ps_selected_row(theme: &iced::Theme) -> iced_widget::button::Style {
+        iced_widget::button::Style {
+            background: Some(iced::Background::Color(theme.extended_palette().warning.weak.color)),
+            text_color: theme.extended_palette().warning.weak.text,
+            border: Border {
+                color: theme.palette().success,
+                width: 0.0,
+                radius: Radius { top_left: 0.0, top_right: 0.0, bottom_right: 0.0, bottom_left: 0.0 }
+            },
+            shadow: Shadow {
+                color: theme.palette().background,
+                offset: Vector {
+                    x: 0.0,
+                    y: 1.0
+                },
+                blur_radius: 0.0
+            },
+            snap: false
+        }
+    }
+
+    pub fn enabled_button(theme: &iced::Theme) -> iced_widget::button::Style {
+        iced_widget::button::Style {
+            background: Some(iced::Background::Color(theme.extended_palette().primary.base.color)),
+            text_color: theme.extended_palette().primary.base.text,
+            border: Border {
+                color: theme.palette().success,
+                width: 0.0,
+                radius: Radius { top_left: 0.0, top_right: 0.0, bottom_right: 0.0, bottom_left: 0.0 }
+            },
+            shadow: Shadow {
+                color: theme.palette().background,
+                offset: Vector {
+                    x: 0.0,
+                    y: 1.0
+                },
+                blur_radius: 0.0
+            },
+            snap: false
+        }
+    }
+
+    pub fn disabled_button(theme: &iced::Theme) -> iced_widget::button::Style {
+        iced_widget::button::Style {
+            background: Some(iced::Background::Color(theme.extended_palette().background.weak.color)),
+            text_color: theme.extended_palette().primary.weak.text,
+            border: Border {
+                color: theme.palette().success,
+                width: 0.0,
+                radius: Radius { top_left: 0.0, top_right: 0.0, bottom_right: 0.0, bottom_left: 0.0 }
+            },
+            shadow: Shadow {
+                color: theme.palette().background,
+                offset: Vector {
+                    x: 0.0,
+                    y: 1.0
+                },
+                blur_radius: 0.0
+            },
+            snap: false
         }
     }
 }

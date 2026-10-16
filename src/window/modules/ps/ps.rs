@@ -1,6 +1,6 @@
 use iced::Length;
-use iced_widget::{button, row, scrollable, table, text};
-use iced_aw::menu::{self, Item};
+use iced_widget::{button, column, row, scrollable, table, text, space};
+use iced_aw::ContextMenu;
 use std::{cmp::Ordering, collections::{HashMap, HashSet}};
 
 use crate::window::modules::ui_state::Styles;
@@ -10,6 +10,7 @@ pub struct Ps {
     pub reversed: bool,
     pub sort_by: PsViewSortBy,
     pub keyed_processes: HashMap<u32, Process>,
+    selected_pid: Option<u32>,
     clock_ticks: u64,
     page_size: u64,
 }
@@ -17,11 +18,12 @@ pub struct Ps {
 impl Ps {
     pub fn new() -> Self {
         Self {
-            reversed: false,
-            sort_by: PsViewSortBy::Cpu,
+            reversed: true,
+            sort_by: PsViewSortBy::App,
             keyed_processes: [].into(),
+            selected_pid: None,
             clock_ticks: unsafe { libc::sysconf(libc::_SC_CLK_TCK) as u64 },
-            page_size: unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64
+            page_size: unsafe { libc::sysconf(libc::_SC_PAGESIZE) as u64 } 
         }
     }
 
@@ -78,7 +80,6 @@ impl Ps {
             PsViewSortBy::Cpu =>  order_from_bool(a.cpu_pct(1000) < b.cpu_pct(1000)),
             PsViewSortBy::Mem =>  order_from_bool(a.pages_used < b.pages_used),
             PsViewSortBy::Pid =>  order_from_bool(a.pid > b.pid),
-            _ =>  order_from_bool(a.cpu_pct(1000) < b.cpu_pct(1000)),
           }
         });
 
@@ -95,7 +96,7 @@ impl Ps {
                             .on_press(Message::UpdateSortBy(PsViewSortBy::App)),
                         self.sort_label(PsViewSortBy::App)
                     ],
-                    |e: &Process| Self::process_context_menu(&e.name, e.pid)),
+                    |e: &Process| self.process_context_menu(&e.name, e.pid)),
                 table::column(
                     row![
                         button("PID")
@@ -103,7 +104,19 @@ impl Ps {
                             .on_press(Message::UpdateSortBy(PsViewSortBy::Pid)),
                         self.sort_label(PsViewSortBy::Pid)
                     ],
-                    |e: &Process| text(&e.pid)),
+                    |e: &Process| 
+                        button(row![space().width(Length::Fill), text(&e.pid)])
+                            .width(Length::Fill)
+                            .on_press(Message::SelectPid(e.pid))
+                            .style(|t, _| {
+                                if self.selected_pid == Some(e.pid) {
+                                    Styles::ps_selected_row(t)
+                                } else {
+                                    Styles::ps_unselected_row(t)
+                                }
+                            })
+                    )
+                    .width(Length::Fixed(80.0)),
                 table::column(
                     row![
                         button("CPU")
@@ -111,8 +124,20 @@ impl Ps {
                             .on_press(Message::UpdateSortBy(PsViewSortBy::Cpu)),
                         self.sort_label(PsViewSortBy::Cpu)
                     ],
-                    |e: &Process| row![text(&e.cpu_pct(1000)), text("%")])
-                    .align_x(iced::alignment::Horizontal::Right),
+                    |e: &Process| 
+                        button(
+                            row![space().width(Length::Fill), text(&e.cpu_pct(1000)), text("%")]
+                        ).width(Length::Fill)
+                            .on_press(Message::SelectPid(e.pid))
+                            .style(|t, _| {
+                                if self.selected_pid == Some(e.pid) {
+                                    Styles::ps_selected_row(t)
+                                } else {
+                                    Styles::ps_unselected_row(t)
+                                }
+                            })
+                    )
+                    .width(Length::Fixed(80.0)),
                 table::column(
                     row![
                         button("Memory")
@@ -122,31 +147,77 @@ impl Ps {
                     ],
                     |e: &Process| {
                         let mem = e.mem_h(self.page_size);
-                        row![text(mem.0), text(" "), text(mem.1)]
+                        button(
+                            row![space().width(Length::Fill), text(mem.0), text(" "), text(mem.1)]
+                                .width(Length::Fill)
+                        ).on_press(Message::SelectPid(e.pid))
+                            .style(|t, _| {
+                                if self.selected_pid == Some(e.pid) {
+                                    Styles::ps_selected_row(t)
+                                } else {
+                                    Styles::ps_unselected_row(t)
+                                }
+                            })
                     })
-                    .align_x(iced::alignment::Horizontal::Right),
+                    .width(Length::Fixed(160.0)),
             ],
             processes
-        );
+        )
+            .padding(0);
 
-        scrollable(elements.width(Length::Fill)).spacing(4).into()
-        // text("Empty").into()
+        column![
+            scrollable(elements.width(Length::Fill))
+                .spacing(4)
+                .height(Length::Fill),
+            space().height(Length::Fixed(20.0)),
+            row![
+                space().width(Length::Fill), 
+                button("End Process")
+                    .on_press(
+                        if let Some(pid) = &self.selected_pid {
+                            Message::SendSignal(*pid, "SIGKILL")
+                        } else {
+                            Message::None
+                        }
+                    )
+                    .style(|t, _| {
+                        match &self.selected_pid {
+                            Some(_) => Styles::enabled_button(t),
+                            None => Styles::disabled_button(t)
+                        }
+                    })
+            ],
+
+        ].into()
     }
 
-    fn process_context_menu<'a>(label: &'a str, pid: u32) -> iced::Element<'a, Message> {
+    fn process_context_menu<'a>(&'a self, label: &'a str, pid: u32) -> iced::Element<'a, Message> {
 
         fn button_style(button: iced_widget::Button<'static, Message>) -> iced_widget::Button<'static, Message> {
             button.width(Length::Fill).style(|t, s| Styles::ps_dropdown_button(t, s))
         }
         
-        menu::MenuBar::new(vec![
-            Item::with_menu(text(label), menu::Menu::new(vec![
-                menu::Item::new(button_style(button("Close"))     .on_press(Message::SendSignal(pid, "SIGTERM"))),
-                menu::Item::new(button_style(button("Force Quit")).on_press(Message::SendSignal(pid, "SIGKILL"))),
-                menu::Item::new(button_style(button("Pause"))     .on_press(Message::SendSignal(pid, "SIGSTOP"))),
-                menu::Item::new(button_style(button("Resume"))    .on_press(Message::SendSignal(pid, "SIGCONT"))),
-            ]).width(Length::Fixed(110.0)))
-        ]).into()
+        let underlay = button(text(label))
+            .width(Length::Fill)
+            .on_press(Message::SelectPid(pid))
+            .style(move |t, _| {
+                if self.selected_pid == Some(pid) {
+                    Styles::ps_selected_row(t)
+                } else {
+                    Styles::ps_unselected_row(t)
+                }
+            }
+        );
+
+        ContextMenu::new(underlay, move || {
+            column![
+                button_style(button("Close"))     .on_press(Message::SendSignal(pid, "SIGTERM")),
+                button_style(button("Force Quit")).on_press(Message::SendSignal(pid, "SIGKILL")),
+                button_style(button("Pause"))     .on_press(Message::SendSignal(pid, "SIGSTOP")),
+                button_style(button("Resume"))    .on_press(Message::SendSignal(pid, "SIGCONT")),
+            ].width(Length::Fixed(110.0))
+                .into()
+        }).into()
     }
 
     fn sort_label(&self, read: PsViewSortBy) -> iced::Element<'static, Message> {
@@ -174,7 +245,9 @@ pub enum PsViewSortBy {
 pub enum Message {
     UpdateSortBy(PsViewSortBy),
     /// PID, Signal
-    SendSignal(u32, &'static str)
+    SendSignal(u32, &'static str),
+    SelectPid(u32),
+    None
 }
 
 fn order_from_bool(bool: bool) -> Ordering {
@@ -202,6 +275,15 @@ pub fn update(this: &mut Ps, message: Message) {
                 .arg(format!("{}", pid))
                 .output()
                 .unwrap();
-        }
+        },
+        Message::SelectPid(pid) => {
+            match this.selected_pid {
+                None => this.selected_pid = Some(pid),
+                Some(t) if t == pid => this.selected_pid = None,
+                Some(t) if t != pid => this.selected_pid = Some(pid),
+                _ => this.selected_pid = None
+            }
+        },
+        Message::None => {}
     }
 }
